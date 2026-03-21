@@ -818,13 +818,12 @@ BusHub75Matrix::BusHub75Matrix(BusConfig &bc) : Bus(bc.type, bc.start, bc.autoWh
   if (bc.type > 104) mxconfig.driver = HUB75_I2S_CFG::FM6126A; // use FM6126A for "outdoor" multi-scan panels
   if (bc.type == 106) {
     // Hub75Matrix_HS (1/8-scan panels, e.g. QiangLi P5 with SM16395+SM5368PS chips)
-    // SM16395 requires a custom init sequence (different register values from FM6126A).
-    // Use SHIFTREG driver so the library does NOT run FM6124/FM6126A init in begin().
-    // Our sm16395_init() below will configure the chip registers via direct GPIO BEFORE begin().
-    mxconfig.driver = HUB75_I2S_CFG::SHIFTREG;
+    // Use FM6126A driver so the library runs fm6124init() via DMA in begin().
+    // Many SM16395 panels respond to the FM6126A register init protocol.
+    // driver is already FM6126A from the bc.type > 104 check above.
     mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M;  // 10 MHz clock - better colour quality on outdoor panels
-    mxconfig.latch_blanking = 4;                  // SM16395 needs more blanking than default
-    mxconfig.clkphase = false;                    // negative clock edge required by SM16395
+    mxconfig.latch_blanking = 2;                  // FM6126A default latch blanking
+    mxconfig.clkphase = false;                    // negative clock edge
   }
 
   // How many panels we have connected, cap at sane value, prevent bad data preventing boot due to low memory
@@ -1141,16 +1140,8 @@ BusHub75Matrix::BusHub75Matrix(BusConfig &bc) : Bus(bc.type, bc.start, bc.autoWh
   //display->setBrightness8(25);    // range is 0-255, 0 - 0%, 255 - 100% //  [setBrightness()] Tried to set output brightness before begin()
   _bri = (last_bri > 0) ? last_bri : 25;  // try to restore persistent brightness value
 
-  // SM16395 custom init: must run BEFORE begin() so I2S DMA has not yet
-  // taken control of the GPIO pins.  The chip retains its configuration
-  // registers through the subsequent I2S DMA start-up.
-  // Only needed for new display instances (not re-used ones) and only
-  // for bc.type == 106 (Hub75Matrix_HS) which uses SHIFTREG driver above.
-#if defined(ARDUINO_ARCH_ESP32)
-  if (newDisplay && bc.type == 106) {
-    sm16395_init(mxconfig);
-  }
-#endif
+  // FM6126A init for type 106 (SM16395) is handled by the library inside begin()
+  // via fm6124init() — no manual GPIO init needed.
 
   delay(24); // experimental
   DEBUG_PRINT(F("heap usage: ")); DEBUG_PRINTLN(int(lastHeap - ESP.getFreeHeap()));
