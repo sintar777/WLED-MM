@@ -673,6 +673,117 @@ static inline uint32_t unGamma24_bus(uint32_t c) {
 #endif
 // --------------------------
 
+// ---------------------------------------------------------------------------
+// SM16395 custom initialization
+// ---------------------------------------------------------------------------
+// The SM16395 is a constant-current LED driver used in QiangLi P5 "Q Series Pro"
+// outdoor panels (1/8-scan, HUB75E connector).  It uses the same LAT-timing
+// protocol as the FM6126A but requires completely different configuration
+// register values.  The library has no native SM16395 support, so we perform
+// this init via direct GPIO manipulation BEFORE display->begin() starts DMA.
+// The SM16395 stores its config in internal registers that persist during
+// normal I2S DMA operation, so calling this once before begin() is sufficient.
+//
+// Protocol (same as FM6126A):
+//   REG1 written when LAT is held HIGH for the last 12 CLK cycles of a row.
+//   REG2 written when LAT is held HIGH for the last 13 CLK cycles of a row.
+//   The 16-bit register word is clocked MSB-first and repeats for every 16
+//   clock positions (l % 16 pattern), so PIXELS_PER_ROW does not need to be
+//   an exact multiple of 16.
+//
+// SM16395 register values for QiangLi P5 1/8-scan panels:
+//   REG1 = 0xFFFE  all brightness/current bits set (max current), bit 0 reserved
+//   REG2 = 0x0001  output-enable bit (bit 0) set
+//
+// These differ significantly from FM6126A:
+//   FM6126A REG1 = 0x07E0  (only bits 5-10 set for medium brightness)
+//   FM6126A REG2 = 0x0040  (bit 6 = output enable)
+//
+// Must be called with mxconfig.driver = SHIFTREG so that begin() does NOT
+// overwrite our init with FM6126A values.
+// ---------------------------------------------------------------------------
+#if defined(ARDUINO_ARCH_ESP32)
+static void sm16395_init(const HUB75_I2S_CFG& _cfg) {
+  USER_PRINTLN("SM16395: starting custom init sequence...");
+
+  // Configuration register bit patterns (MSB first, index 0 = bit 15)
+  // REG1 = 0xFFFE: all current/brightness channels on, bit 0 (LSB) = 0 (reserved)
+  // REG2 = 0x0001: only output-enable bit set
+  const bool REG1[16] = {1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,0}; // 0xFFFE
+  const bool REG2[16] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1}; // 0x0001
+
+  // PIXELS_PER_ROW must match what the I2S driver uses so that the LAT
+  // edge falls at the same position relative to the row boundary.
+  const int PIXELS_PER_ROW = (int)_cfg.mx_width * (int)_cfg.chain_length;
+
+  // Configure every relevant pin as a push-pull output, starting LOW.
+  for (int _pin : {_cfg.gpio.r1, _cfg.gpio.r2,
+                   _cfg.gpio.g1, _cfg.gpio.g2,
+                   _cfg.gpio.b1, _cfg.gpio.b2,
+                   _cfg.gpio.clk, _cfg.gpio.lat, _cfg.gpio.oe}) {
+    gpio_reset_pin((gpio_num_t)_pin);
+    gpio_set_direction((gpio_num_t)_pin, GPIO_MODE_OUTPUT);
+    gpio_set_level((gpio_num_t)_pin, LOW);
+  }
+
+  // Disable display output during initialization.
+  gpio_set_level((gpio_num_t)_cfg.gpio.oe, HIGH);
+
+  // ---- Send REG1 (LAT high during last 12 CLK pulses) ----
+  for (int l = 0; l < PIXELS_PER_ROW; l++) {
+    int bit = REG1[l % 16] ? 1 : 0;
+    gpio_set_level((gpio_num_t)_cfg.gpio.r1, bit);
+    gpio_set_level((gpio_num_t)_cfg.gpio.r2, bit);
+    gpio_set_level((gpio_num_t)_cfg.gpio.g1, bit);
+    gpio_set_level((gpio_num_t)_cfg.gpio.g2, bit);
+    gpio_set_level((gpio_num_t)_cfg.gpio.b1, bit);
+    gpio_set_level((gpio_num_t)_cfg.gpio.b2, bit);
+    if (l > PIXELS_PER_ROW - 12) {
+      gpio_set_level((gpio_num_t)_cfg.gpio.lat, HIGH);
+    }
+    gpio_set_level((gpio_num_t)_cfg.gpio.clk, LOW);
+    gpio_set_level((gpio_num_t)_cfg.gpio.clk, HIGH);
+  }
+  gpio_set_level((gpio_num_t)_cfg.gpio.lat, LOW);
+
+  // ---- Send REG2 (LAT high during last 13 CLK pulses) ----
+  for (int l = 0; l < PIXELS_PER_ROW; l++) {
+    int bit = REG2[l % 16] ? 1 : 0;
+    gpio_set_level((gpio_num_t)_cfg.gpio.r1, bit);
+    gpio_set_level((gpio_num_t)_cfg.gpio.r2, bit);
+    gpio_set_level((gpio_num_t)_cfg.gpio.g1, bit);
+    gpio_set_level((gpio_num_t)_cfg.gpio.g2, bit);
+    gpio_set_level((gpio_num_t)_cfg.gpio.b1, bit);
+    gpio_set_level((gpio_num_t)_cfg.gpio.b2, bit);
+    if (l > PIXELS_PER_ROW - 13) {
+      gpio_set_level((gpio_num_t)_cfg.gpio.lat, HIGH);
+    }
+    gpio_set_level((gpio_num_t)_cfg.gpio.clk, LOW);
+    gpio_set_level((gpio_num_t)_cfg.gpio.clk, HIGH);
+  }
+  gpio_set_level((gpio_num_t)_cfg.gpio.lat, LOW);
+
+  // ---- Blank the data lines and flush a clean row ----
+  for (int _pin : {_cfg.gpio.r1, _cfg.gpio.r2,
+                   _cfg.gpio.g1, _cfg.gpio.g2,
+                   _cfg.gpio.b1, _cfg.gpio.b2}) {
+    gpio_set_level((gpio_num_t)_pin, LOW);
+  }
+  for (int l = 0; l < PIXELS_PER_ROW; l++) {
+    gpio_set_level((gpio_num_t)_cfg.gpio.clk, LOW);
+    gpio_set_level((gpio_num_t)_cfg.gpio.clk, HIGH);
+  }
+  // Final latch pulse to settle the output stage.
+  gpio_set_level((gpio_num_t)_cfg.gpio.lat, HIGH);
+  gpio_set_level((gpio_num_t)_cfg.gpio.clk, LOW);
+  gpio_set_level((gpio_num_t)_cfg.gpio.clk, HIGH);
+  gpio_set_level((gpio_num_t)_cfg.gpio.lat, LOW);
+
+  // Leave OE HIGH (disabled); display->begin() will assert it LOW.
+  USER_PRINTLN("SM16395: custom init done.");
+}
+#endif // ARDUINO_ARCH_ESP32
+
 BusHub75Matrix::BusHub75Matrix(BusConfig &bc) : Bus(bc.type, bc.start, bc.autoWhite) {
   MatrixPanel_I2S_DMA* display = nullptr;
   VirtualMatrixPanel*  fourScanPanel = nullptr;
@@ -704,7 +815,17 @@ BusHub75Matrix::BusHub75Matrix(BusConfig &bc) : Bus(bc.type, bc.start, bc.autoWh
   _needsRefresh = mxconfig.latch_blanking == 1;
   reversed = mxconfig.clkphase;
 
-  if (bc.type > 104) mxconfig.driver = HUB75_I2S_CFG::FM6124;  // use FM6124 for "outdoor" panels - workaround until we can make the driver user-configurable
+  if (bc.type > 104) mxconfig.driver = HUB75_I2S_CFG::FM6126A; // use FM6126A for "outdoor" multi-scan panels
+  if (bc.type == 106) {
+    // Hub75Matrix_HS (1/8-scan panels, e.g. QiangLi P5 with SM16395+SM5368PS chips)
+    // SM16395 requires a custom init sequence (different register values from FM6126A).
+    // Use SHIFTREG driver so the library does NOT run FM6124/FM6126A init in begin().
+    // Our sm16395_init() below will configure the chip registers via direct GPIO BEFORE begin().
+    mxconfig.driver = HUB75_I2S_CFG::SHIFTREG;
+    mxconfig.i2sspeed = HUB75_I2S_CFG::HZ_10M;  // 10 MHz clock - better colour quality on outdoor panels
+    mxconfig.latch_blanking = 4;                  // SM16395 needs more blanking than default
+    mxconfig.clkphase = false;                    // negative clock edge required by SM16395
+  }
 
   // How many panels we have connected, cap at sane value, prevent bad data preventing boot due to low memory
   #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)        // ESP32-S3: allow up to 6 panels
@@ -1019,6 +1140,17 @@ BusHub75Matrix::BusHub75Matrix(BusConfig &bc) : Bus(bc.type, bc.start, bc.autoWh
   // let's adjust default brightness
   //display->setBrightness8(25);    // range is 0-255, 0 - 0%, 255 - 100% //  [setBrightness()] Tried to set output brightness before begin()
   _bri = (last_bri > 0) ? last_bri : 25;  // try to restore persistent brightness value
+
+  // SM16395 custom init: must run BEFORE begin() so I2S DMA has not yet
+  // taken control of the GPIO pins.  The chip retains its configuration
+  // registers through the subsequent I2S DMA start-up.
+  // Only needed for new display instances (not re-used ones) and only
+  // for bc.type == 106 (Hub75Matrix_HS) which uses SHIFTREG driver above.
+#if defined(ARDUINO_ARCH_ESP32)
+  if (newDisplay && bc.type == 106) {
+    sm16395_init(mxconfig);
+  }
+#endif
 
   delay(24); // experimental
   DEBUG_PRINT(F("heap usage: ")); DEBUG_PRINTLN(int(lastHeap - ESP.getFreeHeap()));
