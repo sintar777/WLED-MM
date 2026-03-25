@@ -704,7 +704,10 @@ BusHub75Matrix::BusHub75Matrix(BusConfig &bc) : Bus(bc.type, bc.start, bc.autoWh
   _needsRefresh = mxconfig.latch_blanking == 1;
   reversed = mxconfig.clkphase;
 
-  if (bc.type > 104) mxconfig.driver = HUB75_I2S_CFG::FM6124;  // use FM6124 for "outdoor" panels - workaround until we can make the driver user-configurable
+  // Panel types 105/106 = chained 32x32 or 64x32 P5 panels (ICN2038S driver, common for outdoor P5)
+  // Panel types 107/108 = chained 64x64 or 128x64 panels (FM6124 driver common for larger outdoor panels)
+  if (bc.type == 105 || bc.type == 106) mxconfig.driver = HUB75_I2S_CFG::ICN2038S;  // ICN2038S for chained P5 64x32 / 32x32 outdoor panels
+  else if (bc.type > 106) mxconfig.driver = HUB75_I2S_CFG::FM6124;  // FM6124 for larger chained outdoor panels - workaround until driver is user-configurable
 
   // How many panels we have connected, cap at sane value, prevent bad data preventing boot due to low memory
   #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(BOARD_HAS_PSRAM)        // ESP32-S3: allow up to 6 panels
