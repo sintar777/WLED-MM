@@ -180,7 +180,7 @@
 #include "src/dependencies/async-mqtt-client/AsyncMqttClient.h"
 #endif
 
-#define ARDUINOJSON_DECODE_UNICODE 0   // WLEDMM enables support for unicode HEX strings - deserializeJson(doc, "{'firstname':'Beno\\u00EEt'}"); --> not needed - disable saves 1.2KB flash
+#define ARDUINOJSON_DECODE_UNICODE 1   // required for JSON payloads that escape UTF-8 as \\uXXXX (e.g. Python requests default JSON encoder)
 #include "src/dependencies/json/AsyncJson-v6.h"
 #include "src/dependencies/json/ArduinoJson-v6.h"
 
