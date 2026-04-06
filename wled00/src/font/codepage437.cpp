@@ -225,8 +225,75 @@ uint16_t wchar16ToCodepage437(uint16_t wideChar) {
     case 0x20AC: return 238;  break; // Euro € -> ε
     case 0x2713: return 251;  break; // check mark ✓ -> √
     case 0x263E: return 0x01; break; // ☾ last quarter moon (Moonmodules) -> ☺︎ face
-    case 0x042F: return 0x9F; break; // Я (Cyrillic capital YA) -> custom glyph slot in console_font_5x12
-    case 0x044F: return 0x9F; break; // я (Cyrillic small ya) -> fallback to capital Я glyph
+
+    // Cyrillic fallback map (Russian): reuse ASCII/CP437 homoglyphs to avoid storing a full Cyrillic bitmap set
+    case 0x0410: return 'A';  break; // А
+    case 0x0411: return '6';  break; // Б
+    case 0x0412: return 'B';  break; // В
+    case 0x0413: return 'r';  break; // Г
+    case 0x0414: return 'A';  break; // Д
+    case 0x0415: return 'E';  break; // Е
+    case 0x0401: return 'E';  break; // Ё
+    case 0x0416: return 'X';  break; // Ж
+    case 0x0417: return '3';  break; // З
+    case 0x0418: return 'N';  break; // И
+    case 0x0419: return 'N';  break; // Й
+    case 0x041A: return 'K';  break; // К
+    case 0x041B: return 'N';  break; // Л
+    case 0x041C: return 'M';  break; // М
+    case 0x041D: return 'H';  break; // Н
+    case 0x041E: return 'O';  break; // О
+    case 0x041F: return 'n';  break; // П
+    case 0x0420: return 'P';  break; // Р
+    case 0x0421: return 'C';  break; // С
+    case 0x0422: return 'T';  break; // Т
+    case 0x0423: return 'Y';  break; // У
+    case 0x0424: return 'O';  break; // Ф
+    case 0x0425: return 'X';  break; // Х
+    case 0x0426: return 'U';  break; // Ц
+    case 0x0427: return '4';  break; // Ч
+    case 0x0428: return 'W';  break; // Ш
+    case 0x0429: return 'W';  break; // Щ
+    case 0x042A: return 'b';  break; // Ъ
+    case 0x042B: return 'b';  break; // Ы
+    case 0x042C: return 'b';  break; // Ь
+    case 0x042D: return '3';  break; // Э
+    case 0x042E: return 'O';  break; // Ю
+    case 0x042F: return 0x9F; break; // Я -> custom glyph slot
+
+    case 0x0430: return 'a';  break; // а
+    case 0x0431: return '6';  break; // б
+    case 0x0432: return 'B';  break; // в
+    case 0x0433: return 'r';  break; // г
+    case 0x0434: return 'a';  break; // д
+    case 0x0435: return 'e';  break; // е
+    case 0x0451: return 'e';  break; // ё
+    case 0x0436: return 'x';  break; // ж
+    case 0x0437: return '3';  break; // з
+    case 0x0438: return 'n';  break; // и
+    case 0x0439: return 'n';  break; // й
+    case 0x043A: return 'k';  break; // к
+    case 0x043B: return 'n';  break; // л
+    case 0x043C: return 'm';  break; // м
+    case 0x043D: return 'h';  break; // н
+    case 0x043E: return 'o';  break; // о
+    case 0x043F: return 'n';  break; // п
+    case 0x0440: return 'p';  break; // р
+    case 0x0441: return 'c';  break; // с
+    case 0x0442: return 't';  break; // т
+    case 0x0443: return 'y';  break; // у
+    case 0x0444: return 'o';  break; // ф
+    case 0x0445: return 'x';  break; // х
+    case 0x0446: return 'u';  break; // ц
+    case 0x0447: return '4';  break; // ч
+    case 0x0448: return 'w';  break; // ш
+    case 0x0449: return 'w';  break; // щ
+    case 0x044A: return 'b';  break; // ъ
+    case 0x044B: return 'b';  break; // ы
+    case 0x044C: return 'b';  break; // ь
+    case 0x044D: return '3';  break; // э
+    case 0x044E: return 'o';  break; // ю
+    case 0x044F: return 0x9F; break; // я -> fallback to Я glyph
 
     // everything else: unknown
     //default: return 32; // blank
