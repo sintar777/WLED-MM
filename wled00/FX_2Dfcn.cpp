@@ -937,6 +937,8 @@ void Segment::drawCharacterUnicode(uint16_t codepoint, int16_t x, int16_t y, uin
     CRGB col = CRGB(color);
     CRGBPalette16 grad = CRGBPalette16(col, (col2 != BLACK) ? CRGB(col2) : col);
 
+    const uint8_t glyphWidth = (w > 3) ? (w - 1) : w; // keep a small gap between letters
+
     for (uint8_t dy = 0; dy < h; dy++) {
       int16_t y0 = y + dy;
       if (y0 < 0) continue;
@@ -947,10 +949,10 @@ void Segment::drawCharacterUnicode(uint16_t codepoint, int16_t x, int16_t y, uin
       if (srcY > 7) srcY = 7;
       uint8_t rowBits = glyphRows[srcY] & 0x1F;
 
-      for (uint8_t dx = 0; dx < w; dx++) {
+      for (uint8_t dx = 0; dx < glyphWidth; dx++) {
         int16_t x0 = x + dx;
         if (unsigned(x0) >= cols) continue;
-        uint8_t srcX = ((uint16_t)dx * 5U) / (w ? w : 1);
+        uint8_t srcX = ((uint16_t)dx * 5U) / (glyphWidth ? glyphWidth : 1);
         if (srcX > 4) srcX = 4;
         if (rowBits & (0x10 >> srcX)) setPixelColorXY(x0, y0, fgCol);
       }
