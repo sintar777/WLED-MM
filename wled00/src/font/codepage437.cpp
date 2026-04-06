@@ -225,6 +225,8 @@ uint16_t wchar16ToCodepage437(uint16_t wideChar) {
     case 0x20AC: return 238;  break; // Euro € -> ε
     case 0x2713: return 251;  break; // check mark ✓ -> √
     case 0x263E: return 0x01; break; // ☾ last quarter moon (Moonmodules) -> ☺︎ face
+    case 0x042F: return 0x9F; break; // Я (Cyrillic capital YA) -> custom glyph slot in console_font_5x12
+    case 0x044F: return 0x9F; break; // я (Cyrillic small ya) -> fallback to capital Я glyph
 
     // everything else: unknown
     //default: return 32; // blank
