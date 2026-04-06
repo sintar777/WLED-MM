@@ -887,6 +887,7 @@ bool Segment::jsonToPixels(char * name, uint8_t fileNr) {
 #include "wled_fonts.hpp"
 #if defined(WLED_ENABLE_FULL_FONTS)
 #include "src/font/codepages.h"
+#include "src/font/cyrillic_font_5x8.h"
 #endif
 
 // unicode-aware wrapper for drawCharacter(), to be called from  mode_2Dscrollingtext()
@@ -901,10 +902,16 @@ void Segment::drawText(const unsigned char* text, size_t maxLen, int16_t x, int1
   size_t utf16_index = 0;
   for(const unsigned char* now = text; now != nullptr && now[0] != '\0'; now = nextUnicode(now, maxLen)) {
     if (utf16_index < WLED_MAX_SEGNAME_LEN) {
-      decoded_text[utf16_index] = unicodeToWchar16(now, maxLen);                   // UTF-8 decode into decoded_text
-      decoded_text[utf16_index] = wchar16ToCodepage437(decoded_text[utf16_index]); // decoded_text to CP437 (in-place conversion)
-      if ((decoded_text[utf16_index] >= font.firstChar) && ((decoded_text[utf16_index] <= font.lastChar))) // don't advance on NUL, or on codes not suppoted in DrawCharacter
-        utf16_index++;
+      uint16_t codepoint = unicodeToWchar16(now, maxLen); // UTF-8 decode into UTF-16 codepoint
+      uint16_t normalizedCyr = 0;
+      if (normalizeCyrillicCodepoint(codepoint, normalizedCyr)) {
+        decoded_text[utf16_index++] = codepoint; // keep original codepoint for native Cyrillic glyph lookup
+      } else {
+        codepoint = wchar16ToCodepage437(codepoint); // fallback conversion to CP437
+        if ((codepoint >= font.firstChar) && (codepoint <= font.lastChar)) { // don't advance on unsupported codes
+          decoded_text[utf16_index++] = codepoint;
+        }
+      }
     }
   }
   decoded_text[utf16_index] = 0; // NUL terminate string
@@ -915,8 +922,43 @@ void Segment::drawText(const unsigned char* text, size_t maxLen, int16_t x, int1
 #endif
   // pass characters to drawCharacter()
   for (size_t i = 0; i < textLength; i++) {
-    SEGMENT.drawCharacter((unsigned char) decoded_text[i], x + w*i, y, w, h, color, col2, drawShadow);
+    SEGMENT.drawCharacterUnicode(decoded_text[i], x + w*i, y, w, h, color, col2, drawShadow);
   }
+}
+
+void Segment::drawCharacterUnicode(uint16_t codepoint, int16_t x, int16_t y, uint8_t w, uint8_t h, uint32_t color, uint32_t col2, bool drawShadow) {
+#if defined(WLED_ENABLE_FULL_FONTS)
+  (void)drawShadow; // shadow for custom glyphs can be added later
+  uint8_t glyphRows[8] = {0};
+  if (getCyrillicGlyph5x8(codepoint, glyphRows)) {
+    if (!isActive()) return;
+    const uint16_t cols = virtualWidth();
+    const uint16_t rows = virtualHeight();
+    CRGB col = CRGB(color);
+    CRGBPalette16 grad = CRGBPalette16(col, (col2 != BLACK) ? CRGB(col2) : col);
+
+    for (uint8_t dy = 0; dy < h; dy++) {
+      int16_t y0 = y + dy;
+      if (y0 < 0) continue;
+      if (y0 >= rows) break;
+      if (col2 != BLACK) col = ColorFromPalette(grad, (dy+1)*255/h, 255, NOBLEND);
+      uint32_t fgCol = uint32_t(col) & 0x00FFFFFF;
+      uint8_t srcY = ((uint16_t)dy * 8U) / (h ? h : 1);
+      if (srcY > 7) srcY = 7;
+      uint8_t rowBits = glyphRows[srcY] & 0x1F;
+
+      for (uint8_t dx = 0; dx < w; dx++) {
+        int16_t x0 = x + dx;
+        if (unsigned(x0) >= cols) continue;
+        uint8_t srcX = ((uint16_t)dx * 5U) / (w ? w : 1);
+        if (srcX > 4) srcX = 4;
+        if (rowBits & (0x10 >> srcX)) setPixelColorXY(x0, y0, fgCol);
+      }
+    }
+    return;
+  }
+#endif
+  if (codepoint <= 0xFF) drawCharacter((unsigned char)codepoint, x, y, w, h, color, col2, drawShadow);
 }
 
 // draws a raster font character on canvas
