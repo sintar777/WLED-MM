@@ -921,14 +921,8 @@ void Segment::drawText(const unsigned char* text, size_t maxLen, int16_t x, int1
   size_t textLength = min(strnlen((char*)text, maxLen), numberOfChars);
 #endif
   // pass characters to drawCharacter()
-  int16_t cursorX = x;
   for (size_t i = 0; i < textLength; i++) {
-    SEGMENT.drawCharacterUnicode(decoded_text[i], cursorX, y, w, h, color, col2, drawShadow);
-    cursorX += w;
-#if defined(WLED_ENABLE_FULL_FONTS)
-    uint16_t normalizedCyr = 0;
-    if (normalizeCyrillicCodepoint(decoded_text[i], normalizedCyr)) cursorX += 1; // small extra gap for Cyrillic
-#endif
+    SEGMENT.drawCharacterUnicode(decoded_text[i], x + w*i, y, w, h, color, col2, drawShadow);
   }
 }
 
@@ -943,7 +937,7 @@ void Segment::drawCharacterUnicode(uint16_t codepoint, int16_t x, int16_t y, uin
     CRGB col = CRGB(color);
     CRGBPalette16 grad = CRGBPalette16(col, (col2 != BLACK) ? CRGB(col2) : col);
 
-    const uint8_t glyphWidth = w; // draw full width; spacing is handled in drawText()
+    const uint8_t glyphWidth = (w > 3) ? (w - 1) : w; // keep a small gap between letters
 
     for (uint8_t dy = 0; dy < h; dy++) {
       int16_t y0 = y + dy;
